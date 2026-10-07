@@ -83,6 +83,20 @@ jobs:
           psql -d postgres -v ON_ERROR_STOP=1 -q -c "create database verificacion;"
           psql -d verificacion -v ON_ERROR_STOP=1 -q -f .github/scripts/preparar-verificador.sql
 
+          # auth.users se arma con las columnas que trae el respaldo, leídas
+          # del propio dump. Escribirlas a mano no funciona: Supabase le
+          # agrega columnas cuando quiere y el COPY truena con
+          # "column ... does not exist". Todo entra como text salvo `id`,
+          # que debe ser uuid para que la llave foránea de profiles pegue.
+          COLS=$(pg_restore --data-only -f - respaldo/auth_users.dump \
+            | sed -n 's/^COPY auth\.users (\(.*\)) FROM stdin;$/\1/p' | head -1)
+          [ -n "$COLS" ] || { echo "::error::No se pudo leer la lista de columnas de auth.users."; exit 1; }
+          DEF=$(printf '%s' "$COLS" | tr ',' '\n' \
+            | sed 's/^[[:space:]]*//; s/[[:space:]]*$//' \
+            | awk 'NF { if ($1=="id") print "\""$1"\" uuid primary key"; else print "\""$1"\" text" }' \
+            | paste -sd, -)
+          psql -d verificacion -v ON_ERROR_STOP=1 -q -c "create table auth.users ($DEF);"
+
           # El orden NO es negociable: auth.users primero, porque
           # profiles.id apunta ahí. Al revés, la llave foránea falla.
           pg_restore --no-owner --no-privileges --exit-on-error \
