@@ -1,0 +1,156 @@
+@import "tailwindcss";
+
+/* Paleta aprobada: crema + derivados del rosa del cerebro + tinta */
+:root {
+  --crema: #fff6e4;
+  --crema-2: #fffcf5;
+  --arena: #ead9b4;
+  --arena-2: #f3e7cc;
+  --arena-3: #f1e3c8;
+  --rosa-nube: #fde7ee;
+  --rosa-nube-2: #f6cfdb;
+  --rosa-nube-3: #fad9e4;
+  --rosa-pastel: #fac9da;
+  --rosa-pastel-2: #efa9c2;
+  --rosa: #f5a3c0;
+  --rosa-2: #e07fa3;
+  --rosa-chicle: #e46f9c;
+  --rosa-chicle-2: #c9507f;
+  --frambuesa: #b8336a;
+  --frambuesa-2: #942352;
+  --tinta: #2a1a24;
+  --tinta-2: #5e4753;
+  --tinta-3: #a77a8b;
+}
+
+@theme inline {
+  --color-crema: var(--crema);
+  --color-crema-2: var(--crema-2);
+  --color-arena: var(--arena);
+  --color-arena-2: var(--arena-2);
+  --color-arena-3: var(--arena-3);
+  --color-rosa-nube: var(--rosa-nube);
+  --color-rosa-nube-2: var(--rosa-nube-2);
+  --color-rosa-nube-3: var(--rosa-nube-3);
+  --color-rosa-pastel: var(--rosa-pastel);
+  --color-rosa-pastel-2: var(--rosa-pastel-2);
+  --color-rosa: var(--rosa);
+  --color-rosa-2: var(--rosa-2);
+  --color-rosa-chicle: var(--rosa-chicle);
+  --color-rosa-chicle-2: var(--rosa-chicle-2);
+  --color-frambuesa: var(--frambuesa);
+  --color-frambuesa-2: var(--frambuesa-2);
+  --color-tinta: var(--tinta);
+  --color-tinta-2: var(--tinta-2);
+  --color-tinta-3: var(--tinta-3);
+  --font-sans: var(--font-cuerpo);
+  --font-display: var(--font-titulos);
+  --radius-ladrillo: 6px;
+}
+
+html {
+  background: var(--crema);
+  color: var(--tinta);
+  font-family: var(--font-cuerpo), Verdana, sans-serif;
+  font-size: 16px;
+  line-height: 1.4;
+  -webkit-font-smoothing: antialiased;
+}
+
+@media (max-width: 640px) {
+  html { font-size: 17px; }
+}
+
+h1, h2, h3, .display {
+  font-family: var(--font-titulos), "Trebuchet MS", sans-serif;
+}
+
+/* Fondo con textura de placa base (cabeceras y menú) */
+.placa {
+  background-color: var(--rosa-nube);
+  background-image: radial-gradient(circle at center, var(--rosa-nube-3) 0, var(--rosa-nube-3) 6px, transparent 7px);
+  background-size: 26px 26px;
+}
+
+/* Botones superiores de un ladrillo: los dibuja ::before con el color de --ladrillo */
+.ladrillo {
+  position: relative;
+  border-radius: var(--radius-ladrillo);
+  background: var(--ladrillo);
+  box-shadow: inset 0 -6px 0 var(--ladrillo-sombra);
+  padding-bottom: 5px;
+}
+.ladrillo.con-botones::before {
+  content: "";
+  position: absolute;
+  top: -7px;
+  left: 12px;
+  right: 12px;
+  height: 7px;
+  background-image: linear-gradient(90deg, var(--ladrillo) 22px, transparent 22px);
+  background-size: 34px 7px;
+  pointer-events: none;
+}
+.ladrillo.con-botones.botones-centro::before {
+  left: calc(50% - 18px);
+  right: auto;
+  width: 36px;
+  background-image: linear-gradient(90deg, var(--ladrillo) 14px, transparent 14px);
+  background-size: 22px 7px;
+}
+
+/* Variantes de color */
+.l-crema { --ladrillo: var(--crema-2); --ladrillo-sombra: var(--arena); color: var(--tinta); }
+.l-nube { --ladrillo: var(--rosa-nube); --ladrillo-sombra: var(--rosa-nube-2); color: var(--tinta); }
+.l-pastel { --ladrillo: var(--rosa-pastel); --ladrillo-sombra: var(--rosa-pastel-2); color: var(--tinta); }
+.l-rosa { --ladrillo: var(--rosa); --ladrillo-sombra: var(--rosa-2); color: var(--tinta); }
+.l-chicle { --ladrillo: var(--rosa-chicle); --ladrillo-sombra: var(--rosa-chicle-2); color: var(--tinta); }
+.l-frambuesa { --ladrillo: var(--frambuesa); --ladrillo-sombra: var(--frambuesa-2); color: #fff; }
+.l-tinta { --ladrillo: var(--tinta); --ladrillo-sombra: #140b11; color: #fff; }
+
+/* Interacción: al presionar, el ladrillo se "hunde" */
+button.ladrillo, a.ladrillo {
+  cursor: pointer;
+  transition: transform 80ms ease, box-shadow 80ms ease;
+}
+button.ladrillo:active, a.ladrillo:active {
+  transform: translateY(3px);
+  box-shadow: inset 0 -3px 0 var(--ladrillo-sombra);
+}
+button.ladrillo:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+:focus-visible {
+  outline: 3px solid var(--tinta);
+  outline-offset: 3px;
+}
+
+/* Tarjetas (panel crema con base arena) */
+.tarjeta {
+  border-radius: 8px;
+  background: var(--crema-2);
+  box-shadow: inset 0 -6px 0 var(--arena);
+}
+
+/* Campos de formulario */
+.campo {
+  height: 52px;
+  width: 100%;
+  border-radius: var(--radius-ladrillo);
+  border: 2px solid var(--tinta);
+  background: #fff;
+  color: var(--tinta);
+  padding: 0 16px;
+  font: inherit;
+}
+.campo::placeholder { color: var(--tinta-3); }
+
+/* Hueco libre en la agenda */
+.hueco {
+  border: 2px dashed var(--tinta-3);
+  border-radius: var(--radius-ladrillo);
+  color: var(--tinta);
+  font-weight: 700;
+}

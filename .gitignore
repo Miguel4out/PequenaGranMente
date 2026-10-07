@@ -1,0 +1,34 @@
+# Dependencias
+node_modules/
+
+# Compilados de Next
+.next/
+out/
+build/
+
+# Variables de entorno — NUNCA al repositorio.
+# Llevan las llaves de Supabase.
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# Respaldos descifrados, por si alguno acaba aquí
+*.dump
+*.tar.gz
+*.gpg
+
+# Sistema
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editores
+.vscode/
+.idea/
+*.swp
+
+# Registros
+npm-debug.log*
+yarn-error.log*
+*.tsbuildinfo
