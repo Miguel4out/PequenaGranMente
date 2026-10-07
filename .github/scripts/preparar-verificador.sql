@@ -7,15 +7,11 @@ create extension if not exists btree_gist with schema extensions;
 create extension if not exists citext      with schema extensions;
 create extension if not exists pgcrypto    with schema extensions;
 
--- auth.users lo administra Supabase. Aquí solo necesitamos la forma, para
--- que la llave foránea de `profiles` tenga a dónde apuntar.
+-- auth.users lo administra Supabase. Aquí solo creamos el esquema; la tabla
+-- se construye en el workflow a partir de las columnas que traiga el propio
+-- respaldo. Escribirla a mano no sirve: Supabase le agrega columnas cuando
+-- quiere y el COPY falla con "column ... does not exist".
 create schema if not exists auth;
-create table if not exists auth.users (
-  id                 uuid primary key,
-  email              varchar(255) unique,
-  raw_user_meta_data jsonb default '{}'::jsonb,
-  created_at         timestamptz default now()
-);
 create or replace function auth.uid() returns uuid
   language sql stable as $fn$ select null::uuid $fn$;
 
