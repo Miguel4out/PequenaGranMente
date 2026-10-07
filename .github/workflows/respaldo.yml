@@ -38,7 +38,7 @@ jobs:
       PGPASSWORD: verificacion
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Instalar cliente de Postgres 17
         run: |
@@ -138,7 +138,7 @@ jobs:
           ls -lh "respaldo-$FECHA.tar.gz.gpg"
 
       - name: Guardar
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: respaldo-${{ env.FECHA }}
           path: respaldo-${{ env.FECHA }}.tar.gz.gpg
