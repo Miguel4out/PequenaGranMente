@@ -1,0 +1,163 @@
+name: Respaldo de la base
+
+# Diario a las 03:17 de la mañana en México (09:17 UTC). El minuto raro es
+# a propósito: los cron en :00 compiten con medio mundo y GitHub los retrasa.
+on:
+  schedule:
+    - cron: "17 9 * * *"
+  workflow_dispatch: {}
+
+concurrency:
+  group: respaldo
+  cancel-in-progress: false
+
+jobs:
+  respaldar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    # Postgres de usar y tirar: aquí se RESTAURA el respaldo para comprobar
+    # que sirve. Un respaldo que nunca se restauró no es un respaldo.
+    services:
+      verificador:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: verificacion
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      PGHOST: localhost
+      PGPORT: "5433"
+      PGUSER: postgres
+      PGPASSWORD: verificacion
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Instalar cliente de Postgres 17
+        run: |
+          set -euo pipefail
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
+            https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" \
+            | sudo tee /etc/apt/sources.list.d/pgdg.list > /dev/null
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client-17
+          pg_dump --version
+
+      - name: Sacar el respaldo
+        env:
+          # Cadena del POOLER EN MODO SESIÓN, puerto 5432. La conexión
+          # directa de Supabase es solo IPv6 en el plan gratuito y los
+          # runners de GitHub son solo IPv4: por ahí no hay paso.
+          # Supabase → Project Settings → Database → Session pooler.
+          PGURL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          set -euo pipefail
+          mkdir -p respaldo
+          echo "FECHA=$(date -u +%Y-%m-%d)" >> "$GITHUB_ENV"
+
+          # 1. El negocio completo: estructura y datos de `public`.
+          pg_dump "$PGURL" --format=custom --no-owner --no-privileges \
+            --schema=public -f respaldo/public.dump
+
+          # 2. Solo las FILAS de auth.users. Sin ellas se rompe la llave
+          #    foránea de `profiles` al restaurar. La estructura la pone
+          #    Supabase, así que no se respalda.
+          pg_dump "$PGURL" --format=custom --no-owner --no-privileges \
+            --data-only --table=auth.users -f respaldo/auth_users.dump
+
+          ls -lh respaldo/
+
+      - name: Restaurar el respaldo en el verificador
+        run: |
+          set -euo pipefail
+          psql -d postgres -v ON_ERROR_STOP=1 -q -c "drop database if exists verificacion;"
+          psql -d postgres -v ON_ERROR_STOP=1 -q -c "create database verificacion;"
+          psql -d verificacion -v ON_ERROR_STOP=1 -q -f .github/scripts/preparar-verificador.sql
+
+          # auth.users se arma con las columnas que trae el respaldo, leídas
+          # del propio dump. Escribirlas a mano no funciona: Supabase le
+          # agrega columnas cuando quiere y el COPY truena con
+          # "column ... does not exist". Todo entra como text salvo `id`,
+          # que debe ser uuid para que la llave foránea de profiles pegue.
+          COLS=$(pg_restore --data-only -f - respaldo/auth_users.dump \
+            | sed -n 's/^COPY auth\.users (\(.*\)) FROM stdin;$/\1/p' | head -1)
+          [ -n "$COLS" ] || { echo "::error::No se pudo leer la lista de columnas de auth.users."; exit 1; }
+          DEF=$(printf '%s' "$COLS" | tr ',' '\n' \
+            | sed 's/^[[:space:]]*//; s/[[:space:]]*$//' \
+            | awk 'NF { if ($1=="id") print "\""$1"\" uuid primary key"; else print "\""$1"\" text" }' \
+            | paste -sd, -)
+          psql -d verificacion -v ON_ERROR_STOP=1 -q -c "create table auth.users ($DEF);"
+
+          # El orden NO es negociable: auth.users primero, porque
+          # profiles.id apunta ahí. Al revés, la llave foránea falla.
+          pg_restore --no-owner --no-privileges --exit-on-error \
+            -d verificacion respaldo/auth_users.dump
+          pg_restore --no-owner --no-privileges --exit-on-error \
+            -d verificacion respaldo/public.dump
+
+      - name: Comprobar que el respaldo sirve de verdad
+        run: |
+          set -euo pipefail
+          Q() { psql -d verificacion -t -A -c "$1"; }
+
+          TABLAS=$(Q "select count(*) from information_schema.tables where table_schema='public';")
+          POLITICAS=$(Q "select count(*) from pg_policies where schemaname='public';")
+          FUNCIONES=$(Q "select count(*) from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public';")
+          CANDADO=$(Q "select count(*) from pg_constraint where conname='citas_sin_traslape';")
+          PACIENTES=$(Q "select count(*) from public.pacientes;")
+          CITAS=$(Q "select count(*) from public.citas;")
+          USUARIOS=$(Q "select count(*) from auth.users;")
+
+          {
+            echo "## Respaldo verificado"
+            echo ""
+            echo "| | |"
+            echo "|---|---|"
+            echo "| Tablas | $TABLAS |"
+            echo "| Políticas RLS | $POLITICAS |"
+            echo "| Funciones | $FUNCIONES |"
+            echo "| Pacientes | $PACIENTES |"
+            echo "| Citas | $CITAS |"
+            echo "| Usuarios | $USUARIOS |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          # Umbrales mínimos. Si el dump sale vacío o a medias, esto falla
+          # y llega el correo. Es el punto de todo el ejercicio.
+          FALLO=0
+          [ "$TABLAS"    -ge 15 ] || { echo "::error::Solo $TABLAS tablas; se esperaban al menos 15."; FALLO=1; }
+          [ "$POLITICAS" -ge 16 ] || { echo "::error::Solo $POLITICAS políticas RLS; se esperaban al menos 16."; FALLO=1; }
+          [ "$FUNCIONES" -ge 15 ] || { echo "::error::Solo $FUNCIONES funciones; se esperaban al menos 15."; FALLO=1; }
+          [ "$CANDADO"   -eq 1  ] || { echo "::error::Falta la restricción citas_sin_traslape."; FALLO=1; }
+          exit $FALLO
+
+      - name: Cifrar
+        env:
+          FRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+        run: |
+          set -euo pipefail
+          tar -czf "respaldo-$FECHA.tar.gz" -C respaldo .
+          printf '%s' "$FRASE" | gpg --batch --yes --passphrase-fd 0 \
+            --symmetric --cipher-algo AES256 \
+            -o "respaldo-$FECHA.tar.gz.gpg" "respaldo-$FECHA.tar.gz"
+          rm -rf respaldo "respaldo-$FECHA.tar.gz"
+          ls -lh "respaldo-$FECHA.tar.gz.gpg"
+
+      - name: Guardar
+        uses: actions/upload-artifact@v5
+        with:
+          name: respaldo-${{ env.FECHA }}
+          path: respaldo-${{ env.FECHA }}.tar.gz.gpg
+          # Rotación de 30 días a propósito: son datos de menores y la
+          # LFPDPPP da derecho a cancelación. Un respaldo eterno haría
+          # imposible borrar a alguien de verdad.
+          retention-days: 30
+          if-no-files-found: error
